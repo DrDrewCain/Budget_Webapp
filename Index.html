@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <base target="_top">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1,
+        h2 {
+            color: #333;
+        }
+
+        .tab {
+            overflow: hidden;
+            border: 1px solid #ccc;
+            background-color: #f1f1f1;
+        }
+
+        .tab button {
+            background-color: inherit;
+            float: left;
+            border: none;
+            outline: none;
+            cursor: pointer;
+            padding: 14px 16px;
+            transition: 0.3s;
+        }
+
+        .tab button:hover {
+            background-color: #ddd;
+        }
+
+        .tab button.active {
+            background-color: #ccc;
+        }
+
+        .tabcontent {
+            display: none;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-top: none;
+        }
+
+        form {
+            margin-bottom: 20px;
+        }
+
+        input,
+        select,
+        button {
+            margin: 5px 0;
+            padding: 5px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th,
+        td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f2f2f2;
+        }
+
+        .remove-btn,
+        .edit-btn {
+            cursor: pointer;
+            margin-right: 5px;
+        }
+
+        .remove-btn {
+            color: red;
+        }
+
+        .edit-btn {
+            color: blue;
+        }
+
+        #expenseChart {
+            max-width: 600px;
+            margin: 20px auto;
+        }
+
+        #customCategoryInput {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Budget and Loan Tracker</h1>
+
+        <div class="tab">
+            <button class="tablinks" onclick="openTab(event, 'Expenses')" id="defaultOpen">Expenses</button>
+            <button class="tablinks" onclick="openTab(event, 'Loans')">Loans</button>
+            <button class="tablinks" onclick="openTab(event, 'Payments')">Payments</button>
+        </div>
+
+        <div id="Expenses" class="tabcontent">
+            <h2>Add Expense</h2>
+            <form id="expenseForm">
+                <input type="date" id="expenseDate" required>
+                <input type="number" id="expenseAmount" placeholder="Amount" step="0.01" required>
+                <input type="text" id="expenseDescription" placeholder="Description" required>
+                <select id="expenseCategory" required>
+                    <option value="">Select Category</option>
+                    <option value="custom">Add Custom Category</option>
+                </select>
+                <input type="text" id="customCategoryInput" placeholder="Enter custom category">
+                <button type="submit">Add Expense</button>
+            </form>
+            <h2>Expense Summary</h2>
+            <canvas id="expenseChart"></canvas>
+            <table id="expenseTable"></table>
+        </div>
+
+        <div id="Loans" class="tabcontent">
+            <h2>Add Loan</h2>
+            <form id="loanForm">
+                <input type="number" id="totalAmount" placeholder="Total Loan Amount" step="0.01" required>
+                <input type="number" id="apr" placeholder="Annual Interest Rate (%)" step="0.01" required>
+                <input type="number" id="term" placeholder="Loan Term (months, 0 for indefinite)" min="0" required>
+                <input type="text" id="loanCategory" placeholder="Loan Category" required>
+                <input type="number" id="monthlyPayment" placeholder="Monthly Payment" step="0.01" required>
+                <button type="submit">Add Loan</button>
+            </form>
+            <h2>Loans Summary</h2>
+            <table id="loansTable"></table>
+        </div>
+
+        <div id="Payments" class="tabcontent">
+            <h2>Add Payment</h2>
+            <form id="paymentForm">
+                <select id="loanIndex" required></select>
+                <input type="date" id="paymentDate" required>
+                <input type="number" id="paymentAmount" placeholder="Payment Amount" step="0.01" required>
+                <button type="submit" id="paymentSubmitButton">Add Payment</button>
+            </form>
+            <h2>Payments Summary</h2>
+            <table id="paymentsTable"></table>
+        </div>
+    </div>
+
+    <script>
+
+        let allPayments = [];
+        let paymentsLoaded = false;
+        let allLoans = []; // Make sure this is populated when loans are fetched
+
+        function openTab(evt, tabName) {
+            console.log('Opening tab:', tabName);
+            var i, tabcontent, tablinks;
+            tabcontent = document.getElementsByClassName("tabcontent");
+            for (i = 0; i < tabcontent.length; i++) {
+                tabcontent[i].style.display = "none";
+            }
+            tablinks = document.getElementsByClassName("tablinks");
+            for (i = 0; i < tablinks.length; i++) {
+                tablinks[i].className = tablinks[i].className.replace(" active", "");
+            }
+            document.getElementById(tabName).style.display = "block";
+            evt.currentTarget.className += " active";
+
+            // Only load payments data when Payments tab is clicked
+            if (tabName === 'Payments') {
+                console.log('Payments tab clicked');
+                google.script.run.withSuccessHandler(updatePayments).getPayments();
+            }
+        }
+
+        // Global variable to store expenses
+        let allExpenses = [];
+
+        // Make sure these functions are defined
+        function fetchAllExpenses() {
+            console.log('Fetching all expenses');
+            google.script.run
+                .withSuccessHandler(function (result) {
+                    console.log('Received all expenses from server:', result);
+                    if (result && Array.isArray(result)) {
+                        updateExpenses(result);
+                    } else {
+                        console.error('Received invalid expense data from server');
+                        alert('Error fetching expenses. Please try again.');
+                    }
+                })
+                .withFailureHandler(function (error) {
+                    console.error('Error fetching expenses:', error);
+                    alert('Error fetching expenses: ' + error.message);
+                })
+                .getExpenses();
+        }
+        // Call this function when the page loads
+        document.addEventListener('DOMContentLoaded', fetchAllExpenses);
+
+        // In the expense form submission event listener
+        // Updated expense form submission handler
+        document.getElementById('expenseForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            var category = this.expenseCategory.value;
+            if (category === 'custom') {
+                category = this.customCategoryInput.value;
+                if (category.trim() === '') {
+                    alert('Please enter a custom category');
+                    return;
+                }
+                google.script.run.withSuccessHandler(updateCategories).addCategory(category);
+            }
+            var newExpense = {
+                date: this.expenseDate.value,
+                amount: Number(this.expenseAmount.value),
+                description: this.expenseDescription.value,
+                category: category
+            };
+            console.log('Submitting new expense:', newExpense);
+
+            google.script.run
+                .withSuccessHandler(function (result) {
+                    console.log('Received expense data from server after addition:', result);
+                    if (result && Array.isArray(result)) {
+                        allExpenses = result;
+                        updateExpenses(allExpenses);
+                    } else {
+                        console.error('Received invalid expense data from server after addition');
+                        alert('Error adding expense. Please try again.');
+                        fetchAllExpenses();
+                    }
+                })
+                .withFailureHandler(function (error) {
+                    console.error('Error adding expense:', error);
+                    alert('Error adding expense: ' + error.message);
+                    fetchAllExpenses();
+                })
+                .addExpense(newExpense.date, newExpense.amount, newExpense.description, newExpense.category);
+
+            this.reset();
+            var customInput = document.getElementById('customCategoryInput');
+            if (customInput) {
+                customInput.style.display = 'none';
+            }
+        });
+
+        document.getElementById('expenseCategory').addEventListener('change', function () {
+            var customInput = document.getElementById('customCategoryInput');
+            if (customInput) {
+                customInput.style.display = this.value === 'custom' ? 'inline-block' : 'none';
+                customInput.required = this.value === 'custom';
+            }
+        });
+
+        document.getElementById('loanForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            google.script.run.withSuccessHandler(updateLoans).addLoan(
+                Number(this.totalAmount.value),
+                Number(this.apr.value),
+                Number(this.term.value),
+                this.loanCategory.value,
+                Number(this.monthlyPayment.value)
+            );
+            this.reset();
+        });
+
+        function addPayment(e) {
+            e.preventDefault();
+            var loanIndex = document.getElementById('loanIndex').value;
+            var paymentDate = document.getElementById('paymentDate').value;
+            var paymentAmount = document.getElementById('paymentAmount').value;
+
+            console.log('Submitting new payment:', { loanIndex, paymentDate, paymentAmount });
+
+            google.script.run
+                .withSuccessHandler(function (result) {
+                    console.log('Received result from addPayment:', result);
+                    if (result.error) {
+                        console.error('Error adding payment:', result.error);
+                        alert('Error adding payment: ' + result.error);
+                    } else {
+                        updateLoans(result.loans);
+                        updatePayments(result.payments, result.loans);
+                    }
+                })
+                .withFailureHandler(function (error) {
+                    console.error('Error in addPayment:', error);
+                    alert('An error occurred while adding the payment. Please try again.');
+                })
+                .addPayment(Number(loanIndex), paymentDate, Number(paymentAmount));
+
+            this.reset();
+        }
+
+
+        function fetchAllPayments() {
+            console.log('Fetching all payments');
+            google.script.run
+                .withSuccessHandler(function (result) {
+                    console.log('Received all payments from server:', result);
+                    if (result && Array.isArray(result)) {
+                        updatePayments(result);
+                    } else {
+                        console.error('Received invalid payment data from server');
+                        alert('Error fetching payments. Please try again.');
+                    }
+                })
+                .withFailureHandler(function (error) {
+                    console.error('Error fetching payments:', error);
+                    alert('Error fetching payments: ' + error.message);
+                })
+                .getPayments();
+        }
+        // Function to set up the initial data
+        function setupInitialData() {
+            console.log('Setting up initial data');
+            fetchAllExpenses();
+            fetchAllLoans();
+        }
+
+        // Event listener for DOMContentLoaded
+        document.addEventListener('DOMContentLoaded', function () {
+            console.log('DOM fully loaded');
+            // Trigger the click on the default tab
+            document.getElementById("defaultOpen").click();
+
+            // Load initial data
+            setupInitialData();
+        });
+
+
+        function fetchAllLoans() {
+            console.log('Fetching all loans');
+            google.script.run
+                .withSuccessHandler(function (result) {
+                    console.log('Received all loans from server:', result);
+                    if (result && Array.isArray(result)) {
+                        updateLoans(result);
+                    } else {
+                        console.error('Received invalid loan data from server');
+                        alert('Error fetching loans. Please try again.');
+                    }
+                })
+                .withFailureHandler(function (error) {
+                    console.error('Error fetching loans:', error);
+                    alert('Error fetching loans: ' + error.message);
+                })
+                .getLoans();
+        }
+
+        // Make sure to call this function when the page loads
+        document.addEventListener('DOMContentLoaded', fetchAllPayments);
+        document.getElementById('paymentForm').addEventListener('submit', addPayment);
+
+
+        function updateCategories(categories) {
+            var select = document.getElementById('expenseCategory');
+            if (select) {
+                var customOption = select.querySelector('option[value="custom"]');
+                select.innerHTML = '';
+                select.appendChild(new Option('Select Category', ''));
+                categories.forEach(function (category) {
+                    select.appendChild(new Option(category, category));
+                });
+                if (customOption) {
+                    select.appendChild(customOption);
+                } else {
+                    select.appendChild(new Option('Add Custom Category', 'custom'));
+                }
+            }
+        }
+
+        function updateExpenses(expenses) {
+            console.log('Updating expenses table with:', expenses);
+            var table = document.getElementById('expenseTable');
+            if (table) {
+                var chartData = {};
+                var total = 0;
+
+                table.innerHTML = '<tr><th>Date</th><th>Amount</th><th>Description</th><th>Category</th><th>Action</th></tr>';
+
+                if (expenses && expenses.length > 1) {
+                    expenses.slice(1).forEach(function (expense, index) {
+                        var row = table.insertRow(-1);
+                        expense.forEach(function (cell, cellIndex) {
+                            var cellElement = row.insertCell(cellIndex);
+                            if (cellIndex === 0) {
+                                // Format date as YYYY-MM-DD
+                                cellElement.textContent = cell;
+                            } else if (cellIndex === 1) {
+                                cellElement.textContent = '$' + Number(cell).toFixed(2);
+                            } else {
+                                cellElement.textContent = cell;
+                            }
+                        });
+                        var actionCell = row.insertCell(-1);
+                        actionCell.innerHTML = '<span class="remove-btn" onclick="removeExpense(' + index + ')">Remove</span>';
+
+                        if (expense[1] && !isNaN(expense[1])) {
+                            total += parseFloat(expense[1]);
+                            chartData[expense[3]] = (chartData[expense[3]] || 0) + parseFloat(expense[1]);
+                        }
+                    });
+
+                    var totalRow = table.insertRow(-1);
+                    totalRow.insertCell(0).textContent = 'Total';
+                    totalRow.insertCell(1).textContent = '$' + total.toFixed(2);
+                    totalRow.insertCell(2);
+                    totalRow.insertCell(3);
+                    totalRow.insertCell(4);
+
+                    updateExpenseChart(chartData);
+                } else {
+                    table.innerHTML += '<tr><td colspan="5">No expenses found</td></tr>';
+                    // Clear the chart if there are no expenses
+                    updateExpenseChart({});
+                }
+            }
+            console.log('Expense table updated');
+        }
+
+
+        function updateLoans(loans) {
+            allLoans = loans; // Store all loans for use in payment calculations
+
+            var table = document.getElementById('loansTable');
+            var loanSelect = document.getElementById('loanIndex');
+
+            table.innerHTML = '<tr><th>Total Amount</th><th>APR</th><th>Term</th><th>Category</th><th>Monthly Payment</th><th>Total Interest</th><th>Remaining Balance</th><th>Action</th></tr>';
+            loanSelect.innerHTML = '<option value="">Select Loan</option>';
+
+            loans.forEach(function (loan, index) {
+                if (index === 0) return; // Skip header row
+                var row = table.insertRow(-1);
+                loan.forEach(function (cell, cellIndex) {
+                    var cellElement = row.insertCell(cellIndex);
+                    switch (cellIndex) {
+                        case 0: // Total Amount
+                        case 4: // Monthly Payment
+                        case 5: // Total Interest
+                        case 6: // Remaining Balance
+                            cellElement.textContent = '$' + Math.max(0, Number(cell)).toFixed(2);
+                            break;
+                        case 1: // APR
+                            cellElement.textContent = Number(cell).toFixed(2) + '%';
+                            break;
+                        case 2: // Term
+                            cellElement.textContent = cell === 'Indefinite' ? cell : cell + ' months';
+                            break;
+                        default:
+                            cellElement.textContent = cell;
+                    }
+                });
+                var actionCell = row.insertCell(-1);
+                actionCell.innerHTML = '<span class="edit-btn" onclick="editLoan(' + (index - 1) + ')">Edit</span>' +
+                    '<span class="remove-btn" onclick="removeLoan(' + (index - 1) + ')">Remove</span>';
+
+                loanSelect.options.add(new Option('Loan ' + index + ' (' + loan[3] + ')', index - 1));
+            });
+        }
+
+
+        function updatePayments(payments, allLoans) {
+            console.log('Updating payments table with:', payments);
+            var table = document.getElementById('paymentsTable');
+            if (table && allLoans) {
+                table.innerHTML = '<tr><th>Loan</th><th>Date</th><th>Amount</th><th>Principal</th><th>Interest</th><th>Remaining Balance</th><th>Payments Left</th><th>Action</th></tr>';
+
+                if (payments && payments.length > 1) {
+                    payments.forEach(function (payment, index) {
+                        if (index === 0) return; // Skip header row
+                        var row = table.insertRow(-1);
+                        payment.forEach(function (cell, cellIndex) {
+                            if (cellIndex === 0) {
+                                // Find the corresponding loan and display its category
+                                var loan = allLoans.find(l => l[0] === cell);
+                                row.insertCell(cellIndex).textContent = loan ? loan[3] : 'Unknown Loan';
+                            } else if (cellIndex === 1) {
+                                // Format date
+                                row.insertCell(cellIndex).textContent = new Date(cell).toLocaleDateString();
+                            } else if (cellIndex === 6) {
+                                // Payments Left
+                                row.insertCell(cellIndex).textContent = cell || 'N/A';
+                            } else {
+                                // Format numbers as currency
+                                row.insertCell(cellIndex).textContent = '$' + Number(cell).toFixed(2);
+                            }
+                        });
+
+                        var actionCell = row.insertCell(-1);
+                        actionCell.innerHTML = `
+                    <span class="edit-btn" onclick="editPayment(${index - 1})">Edit</span>
+                    <span class="remove-btn" onclick="removePayment(${index - 1})">Delete</span>
+                `;
+                    });
+                } else {
+                    table.innerHTML += '<tr><td colspan="8">No payments found</td></tr>';
+                }
+            } else {
+                console.error('Table element not found or allLoans is undefined');
+            }
+            console.log('Payment table updated');
+        }
+
+        function editPayment(index) {
+            var payments = document.getElementById('paymentsTable').rows;
+            var payment = payments[index + 1].cells; // +1 to skip header row
+
+            // Find the loan index based on the loan category
+            var loanCategory = payment[0].textContent;
+            var loanIndex = allLoans.findIndex(loan => loan[3] === loanCategory) - 1; // -1 because allLoans includes header
+
+            document.getElementById('loanIndex').value = loanIndex;
+
+            // Parse the date correctly
+            var paymentDate = new Date(payment[1].textContent);
+            document.getElementById('paymentDate').value = paymentDate.toISOString().split('T')[0];
+
+            document.getElementById('paymentAmount').value = payment[2].textContent.replace('$', '').trim();
+
+            // Change the payment form submit button to update instead of add
+            var paymentForm = document.getElementById('paymentForm');
+            paymentForm.onsubmit = function (e) {
+                e.preventDefault();
+                google.script.run
+                    .withSuccessHandler(function (result) {
+                        console.log('Received result from updatePayment:', result);
+                        if (result.error) {
+                            console.error('Error updating payment:', result.error);
+                            alert('Error updating payment: ' + result.error);
+                        } else {
+                            updateLoans(result.loans);
+                            updatePayments(result.payments, result.loans);
+                            // Reset the form after successful update
+                            this.reset();
+                            this.onsubmit = null; // Reset the onsubmit handler
+                            document.getElementById('paymentSubmitButton').textContent = 'Add Payment';
+                        }
+                    })
+                    .withFailureHandler(function (error) {
+                        console.error('Error in updatePayment:', error);
+                        alert('An error occurred while updating the payment. Please try again.');
+                    })
+                    .updatePayment(
+                        index,
+                        Number(this.loanIndex.value),
+                        this.paymentDate.value,
+                        Number(this.paymentAmount.value)
+                    );
+            };
+            document.getElementById('paymentSubmitButton').textContent = 'Update Payment';
+        }
+
+        let expenseChart = null; // Global variable to store the chart instance
+
+        function updateExpenseChart(data) {
+            var ctx = document.getElementById('expenseChart').getContext('2d');
+
+            // Destroy the existing chart if it exists
+            if (expenseChart) {
+                expenseChart.destroy();
+            }
+
+            // Create a new chart
+            expenseChart = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: Object.keys(data),
+                    datasets: [{
+                        data: Object.values(data),
+                        backgroundColor: [
+                            '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    title: {
+                        display: true,
+                        text: 'Expense Distribution'
+                    }
+                }
+            });
+        }
+
+        // Make sure you have this function defined as well
+        function removeExpense(index) {
+            google.script.run
+                .withSuccessHandler(function (result) {
+                    console.log('Expense removed, updating table');
+                    if (result && Array.isArray(result)) {
+                        updateExpenses(result);
+                    } else {
+                        console.error('Received invalid data after removing expense');
+                        fetchAllExpenses();
+                    }
+                })
+                .withFailureHandler(function (error) {
+                    console.error('Error removing expense:', error);
+                    alert('Error removing expense: ' + error.message);
+                    fetchAllExpenses();
+                })
+                .removeExpense(index);
+        }
+
+        function editLoan(index) {
+            var loans = document.getElementById('loansTable').rows;
+            var loan = loans[index + 1].cells; // +1 to skip header row
+
+            document.getElementById('totalAmount').value = loan[0].textContent.replace('$', '');
+            document.getElementById('apr').value = loan[1].textContent.replace('%', '');
+            document.getElementById('term').value = loan[2].textContent === 'Indefinite' ? 0 : loan[2].textContent;
+            document.getElementById('loanCategory').value = loan[3].textContent;
+            document.getElementById('monthlyPayment').value = loan[4].textContent.replace('$', '');
+
+            // Change the loan form submit button to update instead of add
+            var loanForm = document.getElementById('loanForm');
+            loanForm.onsubmit = function (e) {
+                e.preventDefault();
+                google.script.run.withSuccessHandler(updateLoans).updateLoan(
+                    index,
+                    Number(this.totalAmount.value),
+                    Number(this.apr.value),
+                    Number(this.term.value),
+                    this.loanCategory.value,
+                    Number(this.monthlyPayment.value)
+                );
+                this.reset();
+                this.onsubmit = null; // Reset the onsubmit handler
+                document.getElementById('loanSubmitButton').textContent = 'Add Loan';
+            };
+            document.getElementById('loanSubmitButton').textContent = 'Update Loan';
+        }
+
+        function removeLoan(index) {
+            google.script.run.withSuccessHandler(updateLoans).removeLoan(index);
+        }
+
+        function removePayment(index) {
+            console.log('Removing payment at index:', index);
+            if (confirm('Are you sure you want to delete this payment?')) {
+                google.script.run
+                    .withSuccessHandler(function (result) {
+                        if (result.error) {
+                            console.error('Error removing payment:', result.error);
+                            alert('Error removing payment: ' + result.error);
+                        } else {
+                            updateLoans(result.loans);
+                            updatePayments(result.payments, result.loans);
+                        }
+                    })
+                    .withFailureHandler(function (error) {
+                        console.error('Error in removePayment:', error);
+                        alert('An error occurred while removing the payment. Please try again.');
+                    })
+                    .removePayment(index);
+            }
+        }
+
+        function updateAll(data) {
+            if (data && data.loans) {
+                updateLoans(data.loans);
+            }
+            if (data && data.payments) {
+                updatePayments(data.payments);
+            }
+        }
+
+
+        // Initial data load
+        google.script.run.withSuccessHandler(updateCategories).getCategories();
+        google.script.run.withSuccessHandler(updateExpenses).getExpenses();
+        google.script.run.withSuccessHandler(updateLoans).getLoans();
+        google.script.run.withSuccessHandler(updatePayments).getPayments();
+    </script>
+</body>
+
+</html>
