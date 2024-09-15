@@ -22,6 +22,7 @@
             line-height: 1.6;
         }
 
+
         @keyframes gradient {
             0% {
                 background-position: 0% 50%;
@@ -46,8 +47,7 @@
         }
 
         h1,
-        h2,
-        h3 {
+        h2 {
             color: var(--primary-color);
             margin-bottom: 20px;
         }
@@ -167,9 +167,7 @@
             opacity: 0.8;
         }
 
-        #expenseChart,
-        #overallPieChart,
-        [id$="PieChart"] {
+        #expenseChart {
             max-width: 600px;
             margin: 20px auto;
             background-color: white;
@@ -220,77 +218,6 @@
         .reset-button:hover {
             opacity: 0.9;
         }
-
-        /* New styles for monthly tabs and summaries */
-        #monthlyTabs {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            margin-bottom: 20px;
-            background-color: var(--background-color);
-            border-radius: var(--border-radius);
-            padding: 10px;
-        }
-
-        .tablinks {
-            background-color: transparent;
-            border: none;
-            outline: none;
-            cursor: pointer;
-            padding: 10px 16px;
-            transition: 0.3s;
-            font-size: 14px;
-            margin: 2px;
-            border-radius: var(--border-radius);
-        }
-
-        .tablinks:hover {
-            background-color: rgba(74, 144, 226, 0.1);
-        }
-
-        .tablinks.active {
-            background-color: var(--primary-color);
-            color: white;
-        }
-
-        .monthTab {
-            display: none;
-            padding: 20px;
-            background-color: white;
-            border-radius: var(--border-radius);
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            margin-bottom: 20px;
-        }
-
-        #overallExpenseSummary,
-        .monthTab {
-            background-color: white;
-            border-radius: var(--border-radius);
-            padding: 20px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            margin-bottom: 20px;
-        }
-
-        #overallExpenseTable,
-        .monthTab table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        #overallExpenseTable th,
-        #overallExpenseTable td,
-        .monthTab table th,
-        .monthTab table td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
-        }
-
-        #overallExpenseTable th,
-        .monthTab table th {
-            background-color: var(--primary-color);
-            color: white;
-        }
     </style>
 </head>
 
@@ -307,10 +234,10 @@
         <div id="Expenses" class="tabcontent">
             <h2>Add Expense</h2>
             <form id="expenseForm">
-                <input type="date" id="expenseDate" name="expenseDate" required>
-                <input type="number" id="expenseAmount" name="expenseAmount" placeholder="Amount" step="0.01" required>
-                <input type="text" id="expenseDescription" name="expenseDescription" placeholder="Description" required>
-                <select id="expenseCategory" name="expenseCategory" required>
+                <input type="date" id="expenseDate" required>
+                <input type="number" id="expenseAmount" placeholder="Amount" step="0.01" required>
+                <input type="text" id="expenseDescription" placeholder="Description" required>
+                <select id="expenseCategory" required>
                     <option value="">Select Category</option>
                     <option value="Food">Food</option>
                     <option value="Transportation">Transportation</option>
@@ -321,30 +248,16 @@
                     <option value="Other">Other</option>
                     <option value="custom">Add Custom Category</option>
                 </select>
-                <input type="text" id="customCategoryInput" name="customCategoryInput"
-                    placeholder="Enter custom category" style="display:none;">
+                <input type="text" id="customCategoryInput" placeholder="Enter custom category" style="display:none;">
                 <button type="submit">Add Expense</button>
             </form>
-
             <h2>Expense Summary</h2>
             <div class="search-container">
                 <input type="text" id="expenseSearch" class="search-input"
                     placeholder="Search by date (YYYY-MM-DD) or category">
-                <button id="searchExpensesBtn" class="search-button">Search</button>
-                <button id="resetExpenseSearchBtn" class="reset-button">Reset</button>
+                <button onclick="searchExpenses()" class="search-button">Search</button>
+                <button onclick="resetExpenseSearch()" class="reset-button">Reset</button>
             </div>
-
-            <div id="monthlyTabs"></div>
-
-            <div id="monthlyExpenseSummaries"></div>
-
-            <div id="overallExpenseSummary">
-                <h3>Overall Expense Summary</h3>
-                <canvas id="expenseChart"></canvas>
-                <table id="expenseTable"></table>
-            </div>
-
-            <h3>All Expenses</h3>
             <canvas id="expenseChart"></canvas>
             <table id="expenseTable"></table>
         </div>
@@ -422,247 +335,77 @@
             }
         }
 
-        //EXPENSE: ----------------------------------------------------------------//
-
+        // Global variable to store expenses
         let allExpenses = [];
 
+        // Make sure these functions are defined
         function fetchAllExpenses() {
             console.log('Fetching all expenses');
             google.script.run
-                .withSuccessHandler(updateExpenseSummary)
+                .withSuccessHandler(function (result) {
+                    console.log('Received all expenses from server:', result);
+                    if (result && Array.isArray(result)) {
+                        updateExpenses(result);
+                    } else {
+                        console.error('Received invalid expense data from server');
+                        alert('Error fetching expenses. Please try again.');
+                    }
+                })
                 .withFailureHandler(function (error) {
                     console.error('Error fetching expenses:', error);
                     alert('Error fetching expenses: ' + error.message);
                 })
-                .getExpenseSummary();
+                .getExpenses();
         }
-
+        // Call this function when the page loads
         document.addEventListener('DOMContentLoaded', fetchAllExpenses);
 
         // In the expense form submission event listener
         // Updated expense form submission handler
-
-        document.addEventListener('DOMContentLoaded', function () {
-            const expenseForm = document.getElementById('expenseForm');
-            if (expenseForm) {
-                expenseForm.addEventListener('submit', function (e) {
-                    e.preventDefault();
-                    var category = this.expenseCategory.value;
-                    if (category === 'custom') {
-                        category = this.customCategoryInput.value;
-                        if (category.trim() === '') {
-                            alert('Please enter a custom category');
-                            return;
-                        }
-                        google.script.run.withSuccessHandler(updateCategories).addCategory(category);
-                    }
-                    var newExpense = {
-                        date: this.expenseDate.value,
-                        amount: Number(this.expenseAmount.value),
-                        description: this.expenseDescription.value,
-                        category: category
-                    };
-                    console.log('Submitting new expense:', newExpense);
-
-                    google.script.run
-                        .withSuccessHandler(updateExpenseSummary)
-                        .withFailureHandler(function (error) {
-                            console.error('Error adding expense:', error);
-                            alert('Error adding expense: ' + error.message);
-                            fetchAllExpenses();
-                        })
-                        .addExpense(newExpense.date, newExpense.amount, newExpense.description, newExpense.category);
-
-                    this.reset();
-                    var customInput = document.getElementById('customCategoryInput');
-                    if (customInput) {
-                        customInput.style.display = 'none';
-                    }
-                });
-            } else {
-                console.error('Expense form not found in the DOM');
-            }
-
-            // Add event listeners for search and reset buttons
-            const searchButton = document.getElementById('searchExpensesBtn');
-            const resetButton = document.getElementById('resetExpenseSearchBtn');
-
-            if (searchButton) {
-                searchButton.addEventListener('click', searchExpenses);
-            } else {
-                console.error('Search button not found in the DOM');
-            }
-
-            if (resetButton) {
-                resetButton.addEventListener('click', resetExpenseSearch);
-            } else {
-                console.error('Reset button not found in the DOM');
-            }
-
-            // Initial data fetch
-            fetchAllExpenses();
-        });
-
-
-        function updateExpenseSummary(data) {
-            console.log('Updating expense summary with:', data);
-            if (data && data.expenses) {
-                updateExpenseTable(data.expenses);
-                updateMonthlyTabs(data.monthlyExpenses);
-                updateOverallSummary(data.overallExpenses);
-            } else {
-                console.error('Invalid data received for expense summary');
-            }
-        }
-
-        function updateExpenseTable(expenses) {
-            console.log('Updating expenses table with:', expenses);
-            var table = document.getElementById('expenseTable');
-            if (table) {
-                var chartData = {};
-                var total = 0;
-
-                table.innerHTML = '<tr><th>Date</th><th>Amount</th><th>Description</th><th>Category</th><th>Action</th></tr>';
-
-                if (expenses && expenses.length > 1) {
-                    expenses.slice(1).forEach(function (expense, index) {
-                        // ... (existing code for populating table)
-
-                        if (expense[1] && !isNaN(expense[1])) {
-                            total += parseFloat(expense[1]);
-                            chartData[expense[3]] = (chartData[expense[3]] || 0) + parseFloat(expense[1]);
-                        }
-                    });
-
-                    var totalRow = table.insertRow(-1);
-                    totalRow.insertCell(0).textContent = 'Total';
-                    totalRow.insertCell(1).textContent = '$' + total.toFixed(2);
-                    totalRow.insertCell(2);
-                    totalRow.insertCell(3);
-                    totalRow.insertCell(4);
-
-                    updateExpenseChart(chartData);
-                } else {
-                    table.innerHTML += '<tr><td colspan="5">No expenses found</td></tr>';
-                    updateExpenseChart({});
+        document.getElementById('expenseForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            var category = this.expenseCategory.value;
+            if (category === 'custom') {
+                category = this.customCategoryInput.value;
+                if (category.trim() === '') {
+                    alert('Please enter a custom category');
+                    return;
                 }
-            } else {
-                console.error('Expense table not found');
+                google.script.run.withSuccessHandler(updateCategories).addCategory(category);
             }
-        }
+            var newExpense = {
+                date: this.expenseDate.value,
+                amount: Number(this.expenseAmount.value),
+                description: this.expenseDescription.value,
+                category: category
+            };
+            console.log('Submitting new expense:', newExpense);
 
-        function updateMonthlyTabs(monthlyExpenses) {
-            const monthlyTabs = document.getElementById('monthlyTabs');
-            const monthlyExpenseSummaries = document.getElementById('monthlyExpenseSummaries');
-
-            monthlyTabs.innerHTML = Object.keys(monthlyExpenses).map((month, index) =>
-                `<button class="tablinks" onclick="openMonthTab('${month}')">${month}</button>`
-            ).join('');
-
-            monthlyExpenseSummaries.innerHTML = Object.keys(monthlyExpenses).map(month => `
-        <div id="${month}" class="monthTab">
-            <h3>${month} Expense Summary</h3>
-            <div id="${month}PieChart"></div>
-            <table>
-                <tr><th>Category</th><th>Amount</th></tr>
-                ${Object.entries(monthlyExpenses[month]).map(([category, amount]) =>
-                `<tr><td>${category}</td><td>$${amount.toFixed(2)}</td></tr>`
-            ).join('')}
-            </table>
-        </div>
-    `).join('');
-
-            Object.entries(monthlyExpenses).forEach(([month, expenses]) => {
-                updateExpenseChart(`${month}PieChart`, expenses);
-            });
-        }
-
-
-        function updateOverallSummary(overallExpenses) {
-            const overallExpenseTable = document.getElementById('overallExpenseTable');
-            overallExpenseTable.innerHTML = `
-        <tr><th>Category</th><th>Amount</th></tr>
-        ${Object.entries(overallExpenses).map(([category, amount]) =>
-                `<tr><td>${category}</td><td>$${amount.toFixed(2)}</td></tr>`
-            ).join('')}
-    `;
-
-            updateExpenseChart('overallPieChart', overallExpenses);
-        }
-
-        function openMonthTab(month) {
-            const tabcontent = document.getElementsByClassName("monthTab");
-            for (let i = 0; i < tabcontent.length; i++) {
-                tabcontent[i].style.display = "none";
-            }
-            const tablinks = document.getElementsByClassName("tablinks");
-            for (let i = 0; i < tablinks.length; i++) {
-                tablinks[i].className = tablinks[i].className.replace(" active", "");
-            }
-            document.getElementById(month).style.display = "block";
-            event.currentTarget.className += " active";
-        }
-
-        function searchExpenses() {
-            const searchTerm = document.getElementById('expenseSearch').value;
-            google.script.run.withSuccessHandler(updateExpenseSummary).searchExpenses(searchTerm);
-        }
-
-        function resetExpenseSearch() {
-            document.getElementById('expenseSearch').value = '';
-            google.script.run.withSuccessHandler(updateExpenseSummary).resetExpenseSearch();
-        }
-
-
-        function removeExpense(index) {
             google.script.run
-                .withSuccessHandler(updateExpenseSummary)
-                .withFailureHandler(function (error) {
-                    console.error('Error removing expense:', error);
-                    alert('Error removing expense: ' + error.message);
-                })
-                .removeExpense(index);
-        }
-
-        function updateExpenseChart(chartData) {
-            const canvas = document.getElementById('expenseChart');
-            if (!canvas) {
-                console.error('Expense chart canvas not found');
-                return;
-            }
-
-            const ctx = canvas.getContext('2d');
-            if (!ctx) {
-                console.error('Unable to get 2D context for expense chart');
-                return;
-            }
-
-            // Clear any existing chart
-            if (window.expenseChart instanceof Chart) {
-                window.expenseChart.destroy();
-            }
-
-            // Create new chart
-            window.expenseChart = new Chart(ctx, {
-                type: 'pie',
-                data: {
-                    labels: Object.keys(chartData),
-                    datasets: [{
-                        data: Object.values(chartData),
-                        backgroundColor: [
-                            '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#FF6384'
-                        ]
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    title: {
-                        display: true,
-                        text: 'Expenses by Category'
+                .withSuccessHandler(function (result) {
+                    console.log('Received expense data from server after addition:', result);
+                    if (result && Array.isArray(result)) {
+                        allExpenses = result;
+                        updateExpenses(allExpenses);
+                    } else {
+                        console.error('Received invalid expense data from server after addition');
+                        alert('Error adding expense. Please try again.');
+                        fetchAllExpenses();
                     }
-                }
-            });
-        }
+                })
+                .withFailureHandler(function (error) {
+                    console.error('Error adding expense:', error);
+                    alert('Error adding expense: ' + error.message);
+                    fetchAllExpenses();
+                })
+                .addExpense(newExpense.date, newExpense.amount, newExpense.description, newExpense.category);
+
+            this.reset();
+            var customInput = document.getElementById('customCategoryInput');
+            if (customInput) {
+                customInput.style.display = 'none';
+            }
+        });
 
 
 
@@ -677,14 +420,6 @@
             }
         });
 
-        // Ensure Chart.js is loaded
-        document.addEventListener('DOMContentLoaded', function () {
-            if (typeof Chart === 'undefined') {
-                console.error('Chart.js is not loaded. Please include the Chart.js library.');
-            }
-        });
-
-        // LOANS: ----------------------------------------------------------------//
 
         document.getElementById('loanForm').addEventListener('submit', function (e) {
             e.preventDefault();
@@ -804,6 +539,85 @@
             }
         }
 
+
+        function updateExpenses(expenses) {
+            console.log('Updating expenses table with:', expenses);
+            var table = document.getElementById('expenseTable');
+            if (table) {
+                var chartData = {};
+                var total = 0;
+
+                table.innerHTML = '<tr><th>Date</th><th>Amount</th><th>Description</th><th>Category</th><th>Action</th></tr>';
+
+                if (expenses && expenses.length > 1) {
+                    expenses.slice(1).forEach(function (expense, index) {
+                        var row = table.insertRow(-1);
+                        expense.forEach(function (cell, cellIndex) {
+                            var cellElement = row.insertCell(cellIndex);
+                            if (cellIndex === 0) {
+                                // Format date as YYYY-MM-DD
+                                cellElement.textContent = cell;
+                            } else if (cellIndex === 1) {
+                                cellElement.textContent = '$' + Number(cell).toFixed(2);
+                            } else {
+                                cellElement.textContent = cell;
+                            }
+                        });
+                        var actionCell = row.insertCell(-1);
+                        actionCell.innerHTML = '<span class="remove-btn" onclick="removeExpense(' + index + ')">Remove</span>';
+
+                        if (expense[1] && !isNaN(expense[1])) {
+                            total += parseFloat(expense[1]);
+                            chartData[expense[3]] = (chartData[expense[3]] || 0) + parseFloat(expense[1]);
+                        }
+                    });
+
+                    var totalRow = table.insertRow(-1);
+                    totalRow.insertCell(0).textContent = 'Total';
+                    totalRow.insertCell(1).textContent = '$' + total.toFixed(2);
+                    totalRow.insertCell(2);
+                    totalRow.insertCell(3);
+                    totalRow.insertCell(4);
+
+                    updateExpenseChart(chartData);
+                } else {
+                    table.innerHTML += '<tr><td colspan="5">No expenses found</td></tr>';
+                    // Clear the chart if there are no expenses
+                    updateExpenseChart({});
+                }
+            }
+            console.log('Expense table updated');
+        }
+
+        function searchExpenses() {
+            console.log('Searching expenses. Available data:', allExpenses);
+            if (!allExpenses || allExpenses.length <= 1) {  // Check if there's only a header row or no data
+                console.error('No expenses data available');
+                alert('No expense data available for search. Please add some expenses first.');
+                return;
+            }
+            var searchTerm = document.getElementById('expenseSearch').value.toLowerCase();
+            console.log('Search term:', searchTerm);
+            var filteredExpenses = allExpenses.filter(function (expense, index) {
+                if (index === 0) return true; // Keep the header row
+                var date = expense[0].toLowerCase();
+                var category = expense[3].toLowerCase();
+                var description = expense[2].toLowerCase();
+                console.log(`Checking expense: Date=${date}, Category=${category}, Description=${description}`);
+                return date.includes(searchTerm) ||
+                    category.includes(searchTerm) ||
+                    description.includes(searchTerm);
+            });
+            console.log('Filtered expenses:', filteredExpenses);
+            updateExpenses(filteredExpenses);
+        }
+
+
+        function resetExpenseSearch() {
+            document.getElementById('expenseSearch').value = '';
+            updateExpenses(window.allExpenses);
+        }
+
         function updateLoans(loans) {
             allLoans = loans; // Store all loans for use in payment calculations
 
@@ -912,6 +726,11 @@
             updatePayments(filteredPayments, allLoans);
         }
 
+        function resetExpenseSearch() {
+            document.getElementById('expenseSearch').value = '';
+            updateExpenses(allExpenses);
+        }
+
         function editPayment(index) {
             var payments = document.getElementById('paymentsTable').rows;
             var payment = payments[index + 1].cells; // +1 to skip header row
@@ -965,6 +784,55 @@
             document.getElementById('paymentSubmitButton').textContent = 'Update Payment';
         }
 
+        let expenseChart = null; // Global variable to store the chart instance
+
+        function updateExpenseChart(data) {
+            var ctx = document.getElementById('expenseChart').getContext('2d');
+
+            // Destroy the existing chart if it exists
+            if (expenseChart) {
+                expenseChart.destroy();
+            }
+
+            // Create a new chart
+            expenseChart = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: Object.keys(data),
+                    datasets: [{
+                        data: Object.values(data),
+                        backgroundColor: Object.keys(data).map(category => getCategoryColor(category))
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    title: {
+                        display: true,
+                        text: 'Expense Distribution'
+                    }
+                }
+            });
+        }
+
+        // Make sure you have this function defined as well
+        function removeExpense(index) {
+            google.script.run
+                .withSuccessHandler(function (result) {
+                    console.log('Expense removed, updating table');
+                    if (result && Array.isArray(result)) {
+                        updateExpenses(result);
+                    } else {
+                        console.error('Received invalid data after removing expense');
+                        fetchAllExpenses();
+                    }
+                })
+                .withFailureHandler(function (error) {
+                    console.error('Error removing expense:', error);
+                    alert('Error removing expense: ' + error.message);
+                    fetchAllExpenses();
+                })
+                .removeExpense(index);
+        }
 
         function editLoan(index) {
             var loans = document.getElementById('loansTable').rows;
@@ -1059,6 +927,7 @@
         });
 
         // Add these event listeners to your search buttons
+        document.getElementById('searchExpensesButton').addEventListener('click', searchExpenses);
         document.getElementById('resetExpenseSearchButton').addEventListener('click', resetExpenseSearch);
         document.getElementById('searchPaymentsButton').addEventListener('click', searchPayments);
         document.getElementById('resetPaymentSearchButton').addEventListener('click', resetPaymentSearch);
